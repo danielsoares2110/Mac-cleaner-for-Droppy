@@ -1,0 +1,156 @@
+{
+  "activation" : {
+    "active" : true,
+    "error" : null
+  },
+  "activity" : [
+
+  ],
+  "artwork" : {
+    "creatorAvatar" : "ok",
+    "icon" : "ok"
+  },
+  "capabilities" : {
+    "declared" : [
+      "shelf-read",
+      "shelf-write",
+      "expanded-surface",
+      "hud"
+    ],
+    "granted" : [
+      "expanded-surface",
+      "hud",
+      "shelf-read",
+      "shelf-write"
+    ]
+  },
+  "droplet" : {
+    "capabilities" : [
+      "shelf-read",
+      "shelf-write",
+      "expanded-surface",
+      "hud"
+    ],
+    "category" : "System",
+    "creator" : "Daniel Soares",
+    "icon" : "MacCleaner.icon",
+    "id" : "mac-cleaner",
+    "kit" : {
+      "abi" : 1,
+      "minAPI" : "1.9.0"
+    },
+    "minAppVersion" : "15.3.0",
+    "name" : "Mac Cleaner",
+    "summary" : "Clean caches, logs and Trash, you review first",
+    "surfaces" : [
+      "shelf-widget",
+      "expanded-surface",
+      "settings-pane",
+      "hud"
+    ],
+    "typeID" : "mac-cleaner",
+    "version" : "1.0.0"
+  },
+  "expandedSurfaces" : [
+    {
+      "id" : "cleaner-detail",
+      "systemImage" : "sparkles",
+      "title" : "Cleaner"
+    }
+  ],
+  "harness" : {
+    "abi" : 1,
+    "apiVersion" : "1.20.1"
+  },
+  "liveActivity" : {
+    "publishing" : false,
+    "seat" : "none(idle)"
+  },
+  "lockScreen" : {
+    "publishing" : false
+  },
+  "log" : [
+    {
+      "at" : "2026-10-06T15:24:12Z",
+      "level" : "info",
+      "message" : "Mac Cleaner activated"
+    }
+  ],
+  "manifest" : {
+    "loaded" : true,
+    "path" : "\/Users\/danny\/droplet\/mac-cleaner\/droplet.json",
+    "problem" : null
+  },
+  "problems" : [
+
+  ],
+  "schema" : "droppykit-harness-report\/1",
+  "shelfWidgets" : [
+    {
+      "contentHeight" : "fixed(190.0)",
+      "id" : "cleaner",
+      "preferredPairedWidth" : 210,
+      "preferredSoloWidth" : 420,
+      "systemImage" : "sparkles",
+      "title" : "Cleaner"
+    }
+  ],
+  "shots" : [
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/overview.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/shelf-widget.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/live-activity.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/hud.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/expanded-surface.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/settings-pane.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/lock-screen.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/menu-bar.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/capabilities.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/preferences.png",
+    "\/Users\/danny\/droplet\/mac-cleaner\/shots\/activity.png"
+  ],
+  "surfaces" : [
+    {
+      "declared" : true,
+      "implemented" : true,
+      "surface" : "shelf-widget",
+      "verdict" : "provided"
+    },
+    {
+      "declared" : false,
+      "implemented" : false,
+      "surface" : "live-activity",
+      "verdict" : "not-provided"
+    },
+    {
+      "declared" : true,
+      "implemented" : true,
+      "surface" : "expanded-surface",
+      "verdict" : "provided"
+    },
+    {
+      "declared" : true,
+      "implemented" : true,
+      "surface" : "settings-pane",
+      "verdict" : "provided"
+    },
+    {
+      "declared" : true,
+      "implemented" : true,
+      "surface" : "hud",
+      "verdict" : "provided"
+    },
+    {
+      "declared" : false,
+      "implemented" : false,
+      "surface" : "lock-screen-status",
+      "verdict" : "not-provided"
+    },
+    {
+      "declared" : false,
+      "implemented" : false,
+      "surface" : "menu-bar-extra",
+      "verdict" : "not-provided"
+    }
+  ],
+  "verdict" : "ok"
+}

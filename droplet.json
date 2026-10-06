@@ -1,0 +1,46 @@
+{
+  "id": "mac-cleaner",
+  "name": "Mac Cleaner",
+  "version": "1.0.0",
+  "summary": "Clean caches, logs and Trash, you review first",
+  "description": "Mac Cleaner scans for caches, logs, Xcode leftovers, files left behind by uninstalled apps and the Trash. Every category expands so you can pick exactly which items go, safe targets are pre-selected, and removed files go to the Trash. Emptying the Trash is the only permanent action and is always opt-in.",
+  "category": "System",
+  "kit": {
+    "abi": 1,
+    "minAPI": "1.9.0"
+  },
+  "minAppVersion": "15.3.0",
+  "capabilities": [
+    "shelf-read",
+    "shelf-write",
+    "expanded-surface",
+    "hud"
+  ],
+  "surfaces": [
+    "shelf-widget",
+    "expanded-surface",
+    "settings-pane",
+    "hud"
+  ],
+  "icon": "MacCleaner.icon",
+  "creator": {
+    "name": "Daniel Soares",
+    "kind": "community",
+    "url": "https://example.com",
+    "avatar": "Creator.png",
+    "gitlab": "danielsoares2110"
+  },
+  "source": {
+    "repository": "https://gitlab.com/droppyformac1/droplets/-/tree/main/droplets/mac-cleaner",
+    "license": "MIT"
+  },
+  "screenshots": [],
+  "keywords": [
+    "clean",
+    "cache",
+    "trash",
+    "storage",
+    "disk",
+    "logs"
+  ]
+}
