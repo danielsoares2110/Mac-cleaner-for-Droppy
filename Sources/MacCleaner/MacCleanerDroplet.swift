@@ -131,22 +131,35 @@ enum CleanerScanner {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(
             at: url,
-            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
+            includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey],
             options: [.skipsHiddenFiles]
         ) else {
             return ((try? fm.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0, 0)
         }
-        for case let file as URL in enumerator {
+        while let file = enumerator.nextObject() as? URL {
             if budget <= 0 { break }
             budget -= 1
-            if let vals = try? file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
-               vals.isRegularFile == true {
-                count += 1
-                total += Int64(vals.fileSize ?? 0)
+            guard let vals = try? file.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey]) else { continue }
+            if vals.isSymbolicLink == true {
+                // Never follow links: a linked folder would count (and
+                // clean!) data that lives outside the scanned cache.
+                enumerator.skipDescendants()
+                continue
             }
+            guard vals.isRegularFile == true else { continue }
+            // VM disks and disk images are never caches, no matter where
+            // they sit. One Docker.raw can "find" 200+ GB on its own.
+            if skippedExtensions.contains(file.pathExtension.lowercased()) { continue }
+            count += 1
+            total += Int64(vals.fileSize ?? 0)
         }
         return (total, count)
     }
+
+    /// Extensions that are never cleanable data, wherever they are found.
+    static let skippedExtensions: Set<String> = [
+        "raw", "vmdk", "vhd", "vhdx", "vdi", "qcow2", "sparseimage", "sparsebundle"
+    ]
 
     static func children(of root: URL, category: CleanerCategoryID, isPermanent: Bool) -> [CleanerItem] {
         let fm = FileManager.default
@@ -156,6 +169,8 @@ enum CleanerScanner {
         var out: [CleanerItem] = []
         var budget = maxFilesPerRoot
         for kid in kids {
+            // A top-level link is not the cache's own data; leave it alone.
+            if (try? kid.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) == true { continue }
             let size: Int64
             var isDir: ObjCBool = false
             _ = fm.fileExists(atPath: kid.path, isDirectory: &isDir)
@@ -294,12 +309,17 @@ public final class MacCleanerDroplet: NSObject, ObservableObject, Droplet {
             return
         }
 
-        // Pre-select: everything found, including Trash. The user asked
-        // for all-selected by default; the Trash row still warns that
-        // emptying it is permanent, and anything can be unchecked.
+        // Pre-select: everything found, including Trash, EXCEPT very
+        // large single items. A runaway cache (a 200 GB npm cache, a
+        // giant mailbox) is still listed and still cleanable, but it is
+        // never one tap away from deletion without an explicit tick:
+        // "Clean 246 GB" preselected is how a cleaner looks like it is
+        // about to wipe the disk.
         var pre: Set<String> = []
         for cat in categories {
-            for item in cat.items { pre.insert(item.id) }
+            for item in cat.items where item.size <= Self.autoSelectMaxSize {
+                pre.insert(item.id)
+            }
         }
         selectedIDs = pre
         phase = .results
@@ -377,10 +397,19 @@ public final class MacCleanerDroplet: NSObject, ObservableObject, Droplet {
         let trashInsteadOfDelete = moveToTrash
         var freed: Int64 = 0
         var removedPaths: Set<String> = []
+        // Items that vanished or changed between scan and clean (caches
+        // churn constantly) vs items that failed for another reason.
+        var stalePaths: Set<String> = []
+        var failedCount = 0
 
         for item in targets {
             if Task.isCancelled { break }
             let url = URL(fileURLWithPath: item.path)
+            guard FileManager.default.fileExists(atPath: item.path) else {
+                host?.log.info("Mac Cleaner item already gone: \(item.path)")
+                stalePaths.insert(item.id)
+                continue
+            }
             let ok: Bool
             if item.category == .trash || !trashInsteadOfDelete {
                 // Permanent: only for Trash contents, or when the user
@@ -404,16 +433,20 @@ public final class MacCleanerDroplet: NSObject, ObservableObject, Droplet {
             if ok {
                 freed += item.size
                 removedPaths.insert(item.id)
+            } else {
+                failedCount += 1
             }
         }
 
-        // Drop cleaned items from the results.
+        // Drop cleaned AND vanished items from the results: a rescan
+        // would not find them either, so the list stays truthful.
+        let gone = removedPaths.union(stalePaths)
         categories = categories.map { cat in
             var c = cat
-            c.items.removeAll { removedPaths.contains($0.id) }
+            c.items.removeAll { gone.contains($0.id) }
             return c
         }.filter { !$0.items.isEmpty }
-        selectedIDs.subtract(removedPaths)
+        selectedIDs.subtract(gone)
 
         lastCleanedBytes += freed
         lastCleanedDate = Date()
@@ -421,9 +454,24 @@ public final class MacCleanerDroplet: NSObject, ObservableObject, Droplet {
 
         phase = .results
         host?.shelf.setHoldsOpen(false)
-        host?.feedback.play(.success)
-        host?.log.notice("Mac Cleaner freed \(CleanerFormat.string(freed))")
-        presentDoneHUD(freed: freed)
+        if freed > 0 && stalePaths.isEmpty && failedCount == 0 {
+            host?.feedback.play(.success)
+            host?.log.notice("Mac Cleaner freed \(CleanerFormat.string(freed))")
+            presentDoneHUD(freed: freed)
+        } else if freed > 0 {
+            // Partial: something changed under us mid-clean.
+            host?.feedback.play(.success)
+            host?.log.notice("Mac Cleaner freed \(CleanerFormat.string(freed)); \(stalePaths.count + failedCount) items changed, rescan to refresh")
+            presentNote("Freed \(CleanerFormat.string(freed)) — rescan to refresh")
+        } else if !stalePaths.isEmpty {
+            host?.log.notice("Mac Cleaner found only stale items; asking for a rescan")
+            presentNote("Already gone — rescan to refresh")
+        } else if failedCount > 0 {
+            host?.feedback.play(.failure)
+            presentNote("Couldn't clean — rescan and try again")
+        } else {
+            presentDoneHUD(freed: freed)
+        }
     }
 
     private func presentDoneHUD(freed: Int64) {
@@ -455,6 +503,11 @@ public final class MacCleanerDroplet: NSObject, ObservableObject, Droplet {
         _ = host.hud.present(request)
     }
 
+    /// Close the review UI and go back to the shelf.
+    func closeReview() {
+        host?.notchSurface.dismissExpandedSurface("cleaner-detail")
+    }
+
     /// Open the full review UI.
     func openReview() {
         guard let host else { return }
@@ -469,6 +522,10 @@ public final class MacCleanerDroplet: NSObject, ObservableObject, Droplet {
     }
 
     // MARK: Real filesystem scan (read-only)
+
+    /// Items bigger than this are listed but never pre-selected: they
+    /// need an explicit tick no matter the defaults.
+    nonisolated static let autoSelectMaxSize: Int64 = 2 * 1024 * 1024 * 1024
 
     nonisolated static func scanFileSystem() -> [CleanerCategoryResult] {
         let fm = FileManager.default
@@ -504,7 +561,9 @@ public final class MacCleanerDroplet: NSObject, ObservableObject, Droplet {
         var other: [CleanerItem] = []
         other += items(at: ".npm/_cacache", category: .otherCaches)
         other += items(at: "Library/Application Support/Code/CachedData", category: .otherCaches)
-        other += items(at: "Library/Containers/com.docker.docker/Data/vms", category: .otherCaches)
+        // Note: Docker's VM disk (Containers/com.docker.docker/Data/vms)
+        // is deliberately NOT scanned: it is a virtual machine disk, not
+        // a cache, and deleting it breaks every container.
         // Browser caches (per-profile folders can be large).
         for rel in ["Library/Caches/Google/Chrome", "Library/Caches/Firefox", "Library/Caches/com.apple.Safari"] {
             other += items(at: rel, category: .otherCaches)
@@ -790,9 +849,18 @@ private struct MacCleanerDetail: View {
         droplet.categories.filter { !$0.id.isSafe }
     }
 
+    private var hasLargeItems: Bool {
+        droplet.categories.flatMap(\.items).contains { $0.size > MacCleanerDroplet.autoSelectMaxSize }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: DroppySpacing.sm) {
             header
+            if hasLargeItems {
+                Text("Very large items are left unticked — tick them yourself to include them.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(AdaptiveColors.notchSurfaceTertiaryText)
+            }
             if droplet.phase == .scanning {
                 scanningRow
             } else if droplet.categories.isEmpty {
@@ -817,6 +885,14 @@ private struct MacCleanerDetail: View {
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(AdaptiveColors.notchSurfaceSecondaryText)
+            Button {
+                droplet.closeReview()
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(DroppyCircleButtonStyle(size: 20))
+            .help("Back")
+            .accessibilityLabel("Back to the shelf")
         }
         .foregroundStyle(AdaptiveColors.notchSurfaceSecondaryText)
     }
@@ -914,6 +990,10 @@ private struct MacCleanerDetail: View {
                             .foregroundStyle(.orange)
                     }
                     // Top items with individual checkboxes: the "choose" feature.
+                    // Each row shows its full path underneath: a bare hash
+                    // for a name ("110a…6b419") tells nobody what would be
+                    // removed, and a cleaner must never ask for trust it
+                    // does not earn with specifics.
                     ForEach(cat.items.prefix(5)) { item in
                         HStack(spacing: DroppySpacing.xsm) {
                             Toggle("", isOn: Binding(
@@ -922,11 +1002,19 @@ private struct MacCleanerDetail: View {
                             ))
                             .labelsHidden()
                             .toggleStyle(.checkbox)
-                            Text(verbatim: item.name)
-                                .font(.system(size: 12))
-                                .foregroundStyle(AdaptiveColors.notchSurfaceSecondaryText)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(verbatim: item.name)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(AdaptiveColors.notchSurfaceSecondaryText)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Text(verbatim: item.path)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(AdaptiveColors.notchSurfaceTertiaryText)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .help(item.path)
+                            }
                             Spacer(minLength: DroppySpacing.sm)
                             Text(verbatim: CleanerFormat.string(item.size))
                                 .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -960,6 +1048,8 @@ private struct MacCleanerDetail: View {
                 Button("Rescan") { droplet.scan() }
                     .buttonStyle(DroppyQuietButtonStyle(size: .small))
             } else {
+                Button("Done") { droplet.closeReview() }
+                    .buttonStyle(DroppyQuietButtonStyle(size: .small))
                 Button("Clear") {
                     droplet.selectNone()
                 }

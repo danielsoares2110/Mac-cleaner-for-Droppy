@@ -26,12 +26,12 @@
   "creator": {
     "name": "Daniel Soares",
     "kind": "community",
-    "url": "https://example.com",
+    "url": "https://github.com/danielsoares2110",
     "avatar": "Creator.png",
     "gitlab": "danielsoares2110"
   },
   "source": {
-    "repository": "https://gitlab.com/droppyformac1/droplets/-/tree/main/droplets/mac-cleaner",
+    "repository": "https://github.com/danielsoares2110/Mac-cleaner-for-Droppy",
     "license": "MIT"
   },
   "screenshots": [],
